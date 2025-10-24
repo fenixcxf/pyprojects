@@ -1,0 +1,64 @@
+from __future__ import division, unicode_literals, print_function
+import os.path
+import matplotlib
+import matplotlib.pyplot as plt
+matplotlib.rc("figure", figsize=(10, 5))
+matplotlib.rc('image', cmap='gray')
+import numpy as np
+import pims
+import trackpy as tp
+
+@pims.pipeline()
+def gray(image):
+    return image[:, :, 1]
+
+# Load the video and convert it to grayscale
+frames = gray(pims.open('C:/Users/kingf/Desktop/videoalgea/test9-230918 x6.avi'))
+
+# Create a file to store the detected cell data
+with open("table", 'w') as f:
+    for frame_number in range(len(frames)):
+        table1 = tp.locate(frames[frame_number], 11, invert=True, minmass=20)
+        f.write(f"Frame {frame_number}:\n{table1}\n")
+
+print('table created!')
+
+# Refine parameters to eliminate spurious features (bug)
+ax = plt.plot()
+ax.hist(table1['mass'], bins=20)
+
+# After refinement
+table1 = tp.locate(frames[0], 11, invert=True, minmass=20)
+tp.annotate(table1, frames[0])
+
+# Check for subpixel accuracy
+tp.subpx_bias(table1)
+tp.subpx_bias(tp.locate(frames[0], 7, invert=True, minmass=20))
+
+# Collect all data from the set of frames into a table
+table2 = tp.batch(frames[:5], 11, minmass=20, invert=True)
+
+# Link features into trajectories
+table3 = tp.link(table1, 5, memory=3)
+
+# Filter out short trajectories
+t1 = tp.filter_stubs(table3, 25)
+
+print('Before:', table3['particle'].nunique())
+print('After:', t1['particle'].nunique())
+
+# Plot mass vs. size of particles
+plt.figure()
+tp.mass_size(t1.groupby('particle').mean())
+
+# Filter particles based on mass, size, and eccentricity
+t2 = t1[((t1['mass'] > 50) & (t1['size'] < 2.6) & (t1['ecc'] < 0.3))]
+
+# Annotate and plot trajectories
+plt.figure()
+tp.annotate(t2[t2['frame'] == 0], frames[0])
+plt.figure()
+tp.plot_traj(t2)
+
+# Save the final tracking data
+t2.to_csv('cell_tracking_results.csv', index=False)
